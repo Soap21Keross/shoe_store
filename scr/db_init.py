@@ -1,29 +1,35 @@
 import sqlite3
 import os
 
+# Шаг 17: Константа пути к базе
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "db", "shoe_store.sqlite")
+
 
 def get_connection():
-    # Определяем путь к папке db и создаём её, если она не существует
-    db_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "db")
-    os.makedirs(db_dir, exist_ok=True)
+    # Создаем папку db, если её нет
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     
-    # Путь к файлу базы данных
-    db_path = os.path.join(db_dir, "shoe_store.sqlite")
-    
-    # Подключаемся к базе
-    conn = sqlite3.connect(db_path)
-    
-    # Включаем проверку внешних ключей (по умолчанию в SQLite отключена)
+    conn = sqlite3.connect(DB_PATH)
+    # Шаг 18: Строки возвращаются как словари
+    conn.row_factory = sqlite3.Row
+    # Шаг 21: Включаем проверку внешних ключей
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
-def init_db():
-    conn = get_connection()
-    cursor = conn.cursor()
+def drop_all_tables(cursor):
+    # Шаг 19: Удаление таблиц в обратном порядке (от зависимых к главным)
+    cursor.execute("DROP TABLE IF EXISTS order_items")
+    cursor.execute("DROP TABLE IF EXISTS orders")
+    cursor.execute("DROP TABLE IF EXISTS stock_items")
+    cursor.execute("DROP TABLE IF EXISTS users")
+    cursor.execute("DROP TABLE IF EXISTS products")
+    cursor.execute("DROP TABLE IF EXISTS sizes")
+    cursor.execute("DROP TABLE IF EXISTS roles")
 
-    # 1. Таблица ролей
-    # Хранит справочник ролей пользователей
+
+def create_tables(cursor):
+    # 1. roles
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS roles (
             role_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,8 +37,7 @@ def init_db():
         )
     """)
 
-    # 2. Таблица размеров
-    # Справочник размеров обуви. Добавлено ограничение CHECK на диапазон от 20 до 50
+    # 2. sizes
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sizes (
             size_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,8 +45,7 @@ def init_db():
         )
     """)
 
-    # 3. Таблица товаров
-    # Добавлены ограничения CHECK на непустое имя и цену в разумных пределах
+    # 3. products
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS products (
             product_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -53,8 +57,7 @@ def init_db():
         )
     """)
 
-    # 4. Таблица пользователей
-    # Добавлено ограничение CHECK на длину логина (от 3 до 20 символов)
+    # 4. users
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,8 +70,7 @@ def init_db():
         )
     """)
 
-    # 5. Таблица товарных позиций (склад)
-    # Ограничение CHECK на неотрицательное количество
+    # 5. stock_items
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS stock_items (
             stock_item_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -80,8 +82,7 @@ def init_db():
         )
     """)
 
-    # 6. Таблица заказов
-    # Добавлено ограничение CHECK на корректность формата даты (ISO 8601)
+    # 6. orders
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS orders (
             order_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,8 +92,7 @@ def init_db():
         )
     """)
 
-    # 7. Таблица состава заказов
-    # Ограничения CHECK на положительное количество и цену
+    # 7. order_items
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS order_items (
             order_item_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -105,24 +105,29 @@ def init_db():
         )
     """)
 
-    # --- Создание индексов ---
-    # Индексы на внешние ключи (ускоряют JOIN)
+    # Шаги 65-71: Создание индексов
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_role_id ON users(role_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_order_date ON orders(order_date)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_manufacturer ON products(manufacturer)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_stock_items_product_id ON stock_items(product_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_stock_items_size_id ON stock_items(size_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_order_items_stock_item_id ON order_items(stock_item_id)")
 
-    # Индексы на поля поиска и сортировки
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_products_manufacturer ON products(manufacturer)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_orders_order_date ON orders(order_date)")
 
+def main():
+    conn = get_connection()
+    cursor = conn.cursor()
+    
+    drop_all_tables(cursor)
+    create_tables(cursor)
+    
     conn.commit()
     conn.close()
-    print("База данных успешно создана со всеми ограничениями и индексами")
+    print("База данных успешно пересоздана со всеми таблицами и индексами")
 
 
 if __name__ == "__main__":
-    init_db()
+    main()
